@@ -8,6 +8,41 @@ interface PaywallOptions {
   testnet: boolean;
 }
 
+const INLINE_SCRIPT_ESCAPES: Record<string, string> = {
+  "<": "\\u003C",
+  ">": "\\u003E",
+  "&": "\\u0026",
+  "\u2028": "\\u2028",
+  "\u2029": "\\u2029",
+};
+
+function serializeForInlineScript(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) {
+    throw new Error("Unable to serialize paywall data");
+  }
+  return serialized.replace(/[<>&\u2028\u2029]/g, (character) => INLINE_SCRIPT_ESCAPES[character]);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>\"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '\"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return character;
+    }
+  });
+}
+
 /**
  * Generates an HTML paywall page that allows users to pay for content access
  *
@@ -25,6 +60,11 @@ export function getPaywallHtml({
   currentUrl,
 }: PaywallOptions): string {
   const selectedPaymentRequirements = selectPaymentRequirements(paymentRequirements);
+  const inlinePaymentRequirements = serializeForInlineScript(selectedPaymentRequirements);
+  const inlineTestnet = serializeForInlineScript(testnet);
+  const inlineCurrentUrl = serializeForInlineScript(currentUrl);
+  const escapedDescription = escapeHtml(selectedPaymentRequirements.description ?? "");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,9 +199,9 @@ export function getPaywallHtml({
   try {
     // Initialize x402 namespace
     window.x402 = {
-      paymentRequirements: ${JSON.stringify(selectedPaymentRequirements)},
-      isTestnet: ${testnet},
-      currentUrl: "${currentUrl}",
+      paymentRequirements: ${inlinePaymentRequirements},
+      isTestnet: ${inlineTestnet},
+      currentUrl: ${inlineCurrentUrl},
       state: {
         publicClient: null,
         chain: null,
@@ -524,7 +564,7 @@ window.addEventListener('load', initializeApp);
   <div class="container">
     <div class="header">
       <h1 class="title">Payment Required</h1>
-      <p class="subtitle">${selectedPaymentRequirements.description}. To access this content, please pay $${amount} ${testnet ? "Base Sepolia" : "Base"} USDC.</p>
+      <p class="subtitle">${escapedDescription}. To access this content, please pay $${amount} ${testnet ? "Base Sepolia" : "Base"} USDC.</p>
       <p class="instructions">Need Base Sepolia USDC? <a href="https://faucet.circle.com/" target="_blank" rel="noopener noreferrer">Get some here.</a></p>
     </div>
 
